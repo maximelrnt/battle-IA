@@ -1,7 +1,7 @@
 """
 ultimate_ttt_colab.py
-=====================
-NOTRE IA (Groupe) - Version Compétition (20/20)
+===================== 
+Version Compétition (20/20)
 
 DESCRIPTION :
 Ce module contient l'IA à soumettre. Elle utilise un Minimax Alpha-Beta 

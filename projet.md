@@ -1,32 +1,59 @@
-# Battle IA : Ultimate Tic-Tac-Toe
-
-## Objectif
-Créer un script interactif permettant de faire affronter notre IA (`GroupAI`) contre une autre IA lors d'un affrontement direct, en entrant les coups de l'adversaire manuellement.
-
-## Spécifications de l'Interface (`projetv1.py`)
-
-1. **Initialisation** : 
-   - Demander à l'utilisateur qui commence le match (1 = Nous, ou 2 = Eux).
-   
-2. **Déroulement de la partie (Boucle de jeu)** :
-   - À chaque tour, **afficher le plateau complet** de manière structurée pour bien visualiser l'état de l'Ultimate Tic-Tac-Toe.
-   - Indiquer visuellement si une sous-grille est forcée ou si c'est un jeu libre.
-   - **Tour de l'Adversaire** : Demander son coup via les coordonnées "colonne ligne" (séparées par un espace). Le script s'assure de vérifier la validité du coup et recommence en cas d'erreur.
-   - **Tour de notre IA** : L'IA calcule son coup automatiquement et affiche les coordonnées du coup qu'elle a décidé de jouer ("colonne, ligne").
-
-3. **Contraintes de temps** :
-   - L'IA doit réfléchir pendant **7 secondes maximum** par coup (réglé de manière sécurisée en interne).
-   - Le script doit chronométrer l'IA lors de son calcul (`compute_best_move`) et afficher ce temps en fin de tour.
-
-4. **Fin de partie & Statistiques** :
-   - Détecter et annoncer la fin de partie (Victoire de l'IA, Défaite, ou Match Nul).
-   - Compiler et afficher des statistiques sur le temps de réflexion de notre IA une fois le jeu terminé : 
-     - Nombre total de coups joués par notre IA.
-     - Temps total cumulé.
-     - Temps moyen de réflexion par coup.
-     - Temps maximum (le plus long) et minimum (le plus court) de réflexion sur un coup.
-
-## Fichiers
-- `ultimate_ttt_colab.py` : Module qui contient la classe `GroupAI`, l'algorithme Minimax Alpha-Beta, et la logique interne du jeu.
-- `projetv1.py` : Le programme principal qui exécute l'interface et gère l'arbitrage.
-- `projet.md` : Les consignes et explications du projet (ce document).
+Ultimate Tic Tac Toe : Affrontement entre IA
+1 Les r`egles du jeu
+L’ultimate Tic Tac Toe est une variation combinatoire autour du jeu de Morpion d´ej`a abord´e en
+TP. C’est un jeu `a deux joueurs en tour par tour (joueur1 avec les croix, joueur2 avec les ronds).
+Il est compos´e d’une grille de 3x3 morpions. Le vainqueur est le premier `a r´eussir `a gagner 3 grilles
+de morpions classiques elles-mˆemes align´ees (en ligne, colonne ou en diagonale). Les d´etails des
+r`egles de l’Ultimate TicTacToe.
+Le jeu est donc compos´e d’une grille comptant 9 colonnes et 9 lignes. Si aucun des deux joueurs
+n’a r´ealis´e un tel alignement et que tous les morpions sont complets, la partie est d´eclar´ee nulle.
+2 Contraintes sur les mod`eles
+Les IA devront reposer sur un Minimax avec id´ealement un ´elagage Alpha-Beta. Vous partirez de
+vos IA d´evelopp´ees pour le Morpion en travaux pratiques. Il est interdit d’utiliser des dictionnaires
+de coups. Toute d´ecision devra ˆetre calcul´ee `a la vol´ee. Pour parvenir `a am´eliorer les IA, il n’est
+pas recommand´e de calculer tout l’arbre mais de d´evelopper votre propre heuristique permettant
+d’´evaluer l’int´erˆet d’explorer une branche de l’arbre et ´eviter aussi d’explorer des branches jusqu’aux
+feuilles.
+1
+3 Combats entre IA
+Votre programme doit permettre `a un joueur d’affronter l’IA. Un affichage de la grille de jeu en
+mode texte est suffisant. Pour se rep´erer, on num´erotera les colonnes et les lignes de 1 `a 9. Par
+convention on annoncera la colonne d’abord et la ligne ensuite. Au commencement, il doit ˆetre
+possible de choisir qui commence: l’IA ou le joueur. Lorsque c’est le tour du joueur, celui-ci doit
+indiquer la colonne et la ligne de son choix. Lorsque c’est le tour de l’IA, celle-ci doit lancer son
+mod`ele. Ensuite, la grille est mise `a jour avec le nouveau pion positionn´e. Pour faciliter la lecture
+du jeu, le choix de l’IA ou du joueur est affich´e en plus de la grille. De cette fa¸con, on pourra faire
+s’affronter deux IA sur diff´erentes machines (par humains interpos´es afin de renseigner les coups de
+l’autre IA).
+4 Modalit´es des combats
+Les IA sont `a d´evelopper par groupe de 4 ou 3 (au sein du mˆeme groupe de TP). Votre IA devra
+affronter les autres IA de votre groupe de TP lors de votre derni`ere s´eance de TP. Votre IA devra
+tourner sur Google Colab1
+, il s’agit d’un environnement de d´eveloppement dans le cloud (n´ecessite
+d’avoir une adresse gmail).
+Un combat entre deux IA sera compos´e de deux parties. Chaque IA commencera une partie `a
+tour de rˆole. Une partie est finie lorsqu’une IA a r´eussi `a aligner 3 morpions ou que la grille est
+remplie. Dans le cas d’un match nul, c’est le joueur avec le plus de morpions gagn´e qui remporte
+la partie. Les parties seront chronom´etr´ees pour chacun des coups des IA2
+. Ce point pr´ecis n’est
+pas un d´etail. En effet, vous aurez `a g´erer un compromis entre la qualit´e de votre strat´egie et
+sa rapidit´e. Il serait tentant d’adopter une strat´egie purement d´efensive (car il est plus facile de
+pousser au nul), mais la distribution des points ci-dessous devrait vous en dissuader:
+Issue d’une partie le plus rapide points r´ecolt´es
+Victoire X 4
+Victoire ✗ 3
+Nul X 1
+Nul ✗ 0
+D´efaite X 1
+D´efaite ✗ 0
+A l’issue de votre derni`ere s´eance, un compte-rendu expliquant vos choix et d´etaillant votre
+impl´ementation ainsi que votre code seront `a d´eposer sur DVO la veille de votre derni`ere s´eance
+de TP. L’´evaluation d´ependra principalement de l’impl´ementation du Minimax avec ´elagage AlphaBeta ainsi que d’un fonctionnement correct (possibilit´e de jouer plusieurs parties sans bug) et enfin
+des points r´ecolt´es.
+Bon courage `a tous
+“Que l’on me donne six heures pour couper un arbre, j’en passerai quatre `a pr´eparer ma hache.”
+Chuck Norris3
+1https://colab.research.google.com
+2https://www.online-stopwatch.com/french/chess-timer
+3Citation apocryphe
+2

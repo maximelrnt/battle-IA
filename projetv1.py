@@ -3,11 +3,10 @@ projetv1.py — Ultimate Tic-Tac-Toe : Combat IA (fichier unique)
 ================================================================
 Contient :
   - GameState   : logique du plateau (make/undo, coups legaux, victoire)
-  - Heuristics  : evaluation statique (nul = defaite, win-seeking)
-  - MinimaxAI   : Alpha-Beta + Move Ordering + Iterative Deepening
-  - Interface   : boucle CLI pour combat IA vs IA (humain interpose)
+  - Heuristics  : evaluation statique
+  - MinimaxAI   : Alpha-Beta + Move Ordering + Iterative Deepening + Parallelisation Racine (Colab CPU optim)
+  - Interface   : boucle CLI avec affichage COLORE pour eviter les erreurs
 
-Convention : colonne et ligne de 1 a 9.
 Contrainte stricte : max 7 secondes par coup.
 """
 
@@ -16,11 +15,21 @@ import os
 import math
 import time
 from typing import List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 Move = Tuple[int, int]          # (col, row) 0-indexes
 SubGrid = Tuple[int, int]       # (sub_row, sub_col)
 SubBoard = List[int]            # 9 entiers : 0=vide, 1=X, -1=O
 
+# Codes ANSI pour les couleurs
+ANSI_BG_YELLOW = "\033[43m"
+ANSI_FG_BLACK = "\033[30m"
+ANSI_RESET = "\033[0m"
+ANSI_BOLD = "\033[1m"
+ANSI_FG_RED = "\033[31m"
+ANSI_FG_GREEN = "\033[32m"
+ANSI_FG_CYAN = "\033[36m"
 
 # =========================================================================
 # GameState
@@ -41,6 +50,15 @@ class GameState:
         self.current_player: int = 1
         self.forced_subgrid: Optional[SubGrid] = None
         self._history: list = []
+
+    def clone(self) -> GameState:
+        """Cree une copie independante de l'etat (utile pour la parallelisation)."""
+        new_state = GameState()
+        new_state.board = [[[val for val in self.board[r][c]] for c in range(3)] for r in range(3)]
+        new_state.global_board = [[val for val in self.global_board[r]] for r in range(3)]
+        new_state.current_player = self.current_player
+        new_state.forced_subgrid = self.forced_subgrid
+        return new_state
 
     def get_cell(self, col: int, row: int) -> int:
         return self.board[row // 3][col // 3][(row % 3) * 3 + (col % 3)]
@@ -224,11 +242,11 @@ class Heuristics:
 
 
 # =========================================================================
-# MinimaxAI
+# MinimaxAI avec Parallelisation Racine
 # =========================================================================
 
 class MinimaxAI:
-    """IA Minimax Alpha-Beta avec Iterative Deepening et Move Ordering."""
+    """IA Minimax Alpha-Beta avec Iterative Deepening, Move Ordering et Parallelisation."""
 
     _TIME_MARGIN = 0.97
 
@@ -240,9 +258,10 @@ class MinimaxAI:
         self.depth_reached = 0
         self._start_time = 0.0
         self._time_exceeded = False
+        self._lock = threading.Lock()
 
     def choose_move(self, state: GameState) -> Move:
-        """Selectionne le meilleur coup via Iterative Deepening Alpha-Beta."""
+        """Selectionne le meilleur coup. Sur Colab (multi-cpu), la parallelisation de la racine est un enorme gain."""
         self._reset_stats()
         legal_moves = state.get_legal_moves()
 
@@ -251,28 +270,47 @@ class MinimaxAI:
         if len(legal_moves) == 1:
             return legal_moves[0]
 
-        best_move = self._order_moves(legal_moves, state)[0]
+        ordered = self._order_moves(legal_moves, state)
+        best_move = ordered[0]
 
         for depth in range(1, self.max_depth + 1):
             if self._is_time_up():
                 break
             self._time_exceeded = False
-            ordered = self._order_moves(legal_moves, state)
+            
+            # PARALLELISATION DE LA RACINE
+            # Sur Colab, ThreadPoolExecutor permet de lancer des evaluations en parallele
+            # sur les differents coeurs CPU disponibles.
             local_best_score = -math.inf
             local_best_move = ordered[0]
+            
+            # Utiliser 4 workers maximum pour eviter l'overhead du thread switching
+            workers = min(len(ordered), 4)
+            
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                # Soumettre toutes les branches racines
+                futures = {}
+                for move in ordered:
+                    # On clone l'etat pour que chaque thread ait son propre plateau
+                    state_clone = state.clone()
+                    state_clone.make_move(move)
+                    future = executor.submit(self._alpha_beta_thread, state_clone, depth - 1, -math.inf, math.inf, False)
+                    futures[future] = move
 
-            for move in ordered:
-                if self._is_time_up():
-                    self._time_exceeded = True
-                    break
-                state.make_move(move)
-                score = self._alpha_beta(state, depth - 1, -math.inf, math.inf, False)
-                state.undo_move()
-                if score > local_best_score:
-                    local_best_score = score
-                    local_best_move = move
-                if local_best_score >= Heuristics.WIN_SCORE:
-                    break
+                for future in as_completed(futures):
+                    if self._is_time_up():
+                        self._time_exceeded = True
+                        break
+                    
+                    move = futures[future]
+                    score = future.result()
+                    
+                    if score > local_best_score:
+                        local_best_score = score
+                        local_best_move = move
+                        
+                    if local_best_score >= Heuristics.WIN_SCORE:
+                        break
 
             if not self._time_exceeded:
                 best_move = local_best_move
@@ -282,8 +320,14 @@ class MinimaxAI:
 
         return best_move
 
+    def _alpha_beta_thread(self, state: GameState, depth: int, alpha: float, beta: float, maximizing: bool) -> float:
+        """Point d'entree pour chaque thread."""
+        return self._alpha_beta(state, depth, alpha, beta, maximizing)
+
     def _alpha_beta(self, state: GameState, depth: int, alpha: float, beta: float, maximizing: bool) -> float:
-        self.nodes_explored += 1
+        with self._lock:
+            self.nodes_explored += 1
+            
         if state.is_terminal() or depth == 0:
             return Heuristics.evaluate(state, self.player)
         if self._is_time_up():
@@ -366,17 +410,21 @@ class MinimaxAI:
 
 
 def clear_console():
-    """Efface le contenu de la console."""
-    os.system('cls' if os.name == 'nt' else 'clear')
+    """Efface le contenu de la console (Colab ou Terminal local)."""
+    try:
+        from IPython.display import clear_output
+        clear_output(wait=True)
+    except ImportError:
+        os.system('cls' if os.name == 'nt' else 'clear')
 
 # =========================================================================
-# Affichage du plateau
+# Affichage du plateau avec COULEURS
 # =========================================================================
 
-SYMBOLS = {0: '.', 1: 'X', -1: 'O'}
+SYMBOLS = {0: '.', 1: f'{ANSI_FG_GREEN}X{ANSI_RESET}', -1: f'{ANSI_FG_RED}O{ANSI_RESET}'}
 
 def print_board(state: GameState) -> None:
-    """Affiche le plateau 9x9 avec separateurs visuels entre sous-grilles."""
+    """Affiche le plateau 9x9 avec mise en evidence (couleur) de la sous-grille jouable."""
 
     print("\n     1  2  3   4  5  6   7  8  9")
     print("   +----------+---------+---------+")
@@ -384,36 +432,59 @@ def print_board(state: GameState) -> None:
     for row in range(9):
         if row > 0 and row % 3 == 0:
             print("   +----------+---------+---------+")
+            
         row_str = f" {row + 1} |"
         for col in range(9):
             if col > 0 and col % 3 == 0:
                 row_str += " |"
+                
+            # VERIFICATION : Sommes-nous dans la sous-grille forcee ?
+            in_forced_subgrid = False
+            if state.forced_subgrid is not None:
+                fsr, fsc = state.forced_subgrid
+                if fsr == row // 3 and fsc == col // 3:
+                    in_forced_subgrid = True
+            
             cell = state.get_cell(col, row)
-            row_str += f" {SYMBOLS[cell]} "
+            sym = SYMBOLS[cell]
+            
+            # APPLICATION DE LA COULEUR DE FOND SI GRILLE FORCEE
+            if in_forced_subgrid:
+                # Fond Jaune + Texte Noir pour que la case ressorte visuellement
+                row_str += f"{ANSI_BG_YELLOW}{ANSI_FG_BLACK} {sym.replace(ANSI_FG_GREEN, '').replace(ANSI_FG_RED, '').replace(ANSI_RESET, '')} {ANSI_RESET}"
+            else:
+                row_str += f" {sym} "
+                
         row_str += " |"
         print(row_str)
 
     print("   +----------+---------+---------+")
 
-    print("\n  [Grilles globales]")
-    global_syms = {0: '.', 1: 'X', -1: 'O', 2: '='}
+    print(f"\n  {ANSI_BOLD}[Grilles globales]{ANSI_RESET}")
+    global_syms = {0: '.', 1: f'{ANSI_FG_GREEN}X{ANSI_RESET}', -1: f'{ANSI_FG_RED}O{ANSI_RESET}', 2: '='}
     for r in range(3):
         vals = [global_syms[state.global_board[r][c]] for c in range(3)]
         print(f"   {vals[0]}  {vals[1]}  {vals[2]}")
 
     if state.forced_subgrid is not None:
         sr, sc = state.forced_subgrid
-        print(f"\n  => Grille forcee : ligne {sr+1}, colonne {sc+1}")
+        print(f"\n  {ANSI_BG_YELLOW}{ANSI_FG_BLACK} => A VOUS DE JOUER : Grille {sr+1} (ligne), {sc+1} (colonne) {ANSI_RESET}")
+        print(f"  {ANSI_FG_CYAN}(Les cases ou vous DEVEZ jouer sont surligneés en JAUNE ci-dessus){ANSI_RESET}")
     else:
-        print("\n  => Jeu libre (n'importe quelle grille disponible)")
+        print(f"\n  {ANSI_FG_CYAN}=> Jeu libre (n'importe quelle grille disponible){ANSI_RESET}")
 
 
 # =========================================================================
-# Boucle principale
+# Boucle principale (compatible Google Colab)
 # =========================================================================
 
 def main():
-
+    """Boucle de jeu principale, optimisee pour Google Colab.
+    - clear_output se fait AVANT chaque affichage du plateau
+    - Un input('Entree...') est ajoute apres le coup de l'IA
+      pour que l'utilisateur puisse LIRE le resultat avant le clear
+    - Les stats finales ne sont jamais effacees
+    """
     while True:
         starter = input("\nQui commence ? (1 = Nous, 2 = Eux) : ").strip()
         if starter in ['1', '2']:
@@ -431,11 +502,21 @@ def main():
 
     move_times = []
     move_count = 0
+    last_move_info = ""  # Garde en memoire l'info du dernier coup pour l'afficher apres clear
 
     while True:
+        # --- Affichage du plateau ---
         clear_console()
+        time.sleep(0.1)  # Petit delai pour que Colab rende l'UI correctement
+
+        # Afficher l'info du dernier coup joue (avant le plateau)
+        if last_move_info:
+            print(last_move_info)
+            print("-" * 50)
+
         print_board(state)
 
+        # --- Verifier si la partie est finie ---
         winner = state.check_global_winner()
         if winner != 0:
             print("\n" + "=" * 50)
@@ -449,10 +530,18 @@ def main():
                 print("   MATCH NUL !")
             break
 
+        # Verifier aussi si aucun coup n'est possible (match nul)
+        if not state.get_legal_moves():
+            print("\n" + "=" * 50)
+            print("   MATCH NUL (plus de coups possibles) !")
+            print("=" * 50)
+            break
+
         current = state.current_player
         move_count += 1
 
         if current == my_id:
+            # --- TOUR DE NOTRE IA ---
             print(f"\n  [Tour #{move_count}] NOTRE IA REFLECHIT...")
             start_time = time.time()
 
@@ -462,15 +551,25 @@ def main():
             duration = end_time - start_time
             move_times.append(duration)
 
-            print(f"  Notre IA joue : Colonne {col + 1}, Ligne {row + 1}")
-            print(f"  Temps : {duration:.3f}s  (profondeur {ai.depth_reached}, noeuds {ai.nodes_explored:,})")
+            # Construire le message de resultat
+            move_info = f"Notre IA joue : Colonne {col + 1}, Ligne {row + 1}\n"
+            move_info += f"Temps de reflexion : {duration:.3f} secondes\n"
+            move_info += f"Combinaisons analysees : {ai.nodes_explored:,} (Profondeur : {ai.depth_reached})"
 
             if duration > 7.0:
-                print(f"  ATTENTION : depassement du temps ({duration:.1f}s > 7s)")
+                move_info += f"\n  !! ATTENTION : depassement du temps ({duration:.1f}s > 7s) !!"
+
+            print(move_info)
 
             state.make_move((col, row))
+            last_move_info = f"[Dernier coup] {move_info}"
+
+            # PAUSE : L'utilisateur doit lire le coup avant que l'ecran se clear
+            # (indispensable sur Colab sinon le clear_output efface tout immediatement)
+            input("\n  >> Appuyez sur Entree pour continuer...")
 
         else:
+            # --- TOUR DE L'ADVERSAIRE ---
             print(f"\n  [Tour #{move_count}] TOUR DE L'ADVERSAIRE")
 
             while True:
@@ -494,13 +593,14 @@ def main():
                         continue
 
                     state.make_move((col_input, row_input))
-                    print(f"  Adversaire joue : Colonne {col_input + 1}, Ligne {row_input + 1}")
+                    last_move_info = f"[Dernier coup] Adversaire : Colonne {col_input + 1}, Ligne {row_input + 1}"
                     break
 
                 except ValueError:
                     print("  Entrez deux nombres entiers. Exemple : 5 5")
 
-    # --- STATISTIQUES ---
+    # --- STATISTIQUES FINALES ---
+    # On n'efface PAS l'ecran ici pour que les stats restent visibles
     print("\n" + "=" * 50)
     print("       STATISTIQUES DE TEMPS (Notre IA)")
     print("=" * 50)

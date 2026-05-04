@@ -61,8 +61,7 @@ Le moteur de jeu utilise les méthodes `make_move` et `undo_move` pour modifier 
 ---
 
 ## 👨‍💻 Auteurs
-- **Maxime Laurent** - *Étudiant à l'ESILV*
-- **Louis** - *Étudiant à l'ESILV*
+- **Max et loulou** - *Étudiant à l'ESILV*
 
 ---
 *Projet réalisé dans le cadre de l'année 3 - ESILV.*

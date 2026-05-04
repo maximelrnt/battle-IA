@@ -121,7 +121,7 @@ class GroupAI:
         win = self._check_win(state)
         if win == self.me: return 10**7
         if win == -self.me: return -10**7
-        if win == 2: return -9999000 # Nul = Défaite
+        if win == 2: return -9999000 # Nul = Défaite on vise les pts de victoires
         
         score = 0
         for i, v in enumerate(state.global_board):
@@ -149,7 +149,7 @@ class GroupAI:
             if gb[a] != 0 and gb[a] != 2 and gb[a] == gb[b] == gb[c]: return gb[a]
         return 2 if all(x != 0 for x in gb) else 0
 
-# --- EXEMPLE D'UTILISATION (Pour toi) ---
+# --- EXEMPLE D'UTILISATION ---
 # ia = GroupAI(my_player_id=1) # On est X
 # coup = ia.compute_best_move() # Renvoie (col, row)
 # ia.update_with_opponent_move(4, 4) # On informe l'IA du coup de l'autre équipe
